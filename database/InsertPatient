@@ -1,0 +1,175 @@
+package database;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.sql.SQLNonTransientConnectionException;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.Scanner;
+
+public class InsertPatient {
+
+    private static boolean isEmpty(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private static boolean isNumeric(String s) {
+        return s != null && s.matches("\\d+");
+    }
+
+    private static boolean isValidDate(String dob) {
+        try {
+            LocalDate.parse(dob);
+            return true;
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    public static void insertPatient(Connection conn, Scanner sc) {
+
+        char again = 'Y';
+
+        while (again == 'Y') {
+            try {
+                System.out.println("\n----- Insert Patient -----");
+
+                // Patient ID
+                System.out.print("Patient ID: ");
+                String idInput = sc.nextLine().trim();
+                if (!isNumeric(idInput)) {
+                    System.out.println("Invalid input: Patient ID must be a number.");
+                    continue;
+                }
+                int patientId = Integer.parseInt(idInput);
+
+                // National ID (exactly 10 digits)
+                System.out.print("National ID: ");
+                String nationalId = sc.nextLine().trim();
+                if (!isNumeric(nationalId) || nationalId.length() != 10) {
+                    System.out.println("Invalid input: National ID must be exactly 10 digits.");
+                    continue;
+                }
+
+                // First Name
+                System.out.print("First Name: ");
+                String firstName = sc.nextLine().trim();
+                if (isEmpty(firstName)) {
+                    System.out.println("Required field missing: First Name is required.");
+                    continue;
+                }
+                if (firstName.length() > 30) {
+                    System.out.println("Invalid input: First Name too long. Max 30 characters.");
+                    continue;
+                }
+
+                // Middle Name (optional)
+                System.out.print("Middle Name: ");
+                String middleName = sc.nextLine().trim();
+                middleName = middleName.isEmpty() ? null : middleName;
+
+                // Last Name
+                System.out.print("Last Name: ");
+                String lastName = sc.nextLine().trim();
+                if (isEmpty(lastName)) {
+                    System.out.println("Required field missing: Last Name is required.");
+                    continue;
+                }
+                if (lastName.length() > 40) {
+                    System.out.println("Invalid input: Last Name too long. Max 40 characters.");
+                    continue;
+                }
+
+                // Phone Number (10 digits)
+                System.out.print("Phone Number: ");
+                String phone = sc.nextLine().trim();
+                if (!isNumeric(phone) || phone.length() != 10) {
+                    System.out.println("Invalid input: Phone Number must be exactly 10 digits.");
+                    continue;
+                }
+
+                // Address
+                System.out.print("Address: ");
+                String address = sc.nextLine().trim();
+                if (address.length() > 150) {
+                    System.out.println("Invalid input: Address too long. Max 150 characters.");
+                    continue;
+                }
+
+                // Date of Birth
+                System.out.print("Date of Birth (YYYY-MM-DD): ");
+                String dob = sc.nextLine().trim();
+                if (!dob.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                    System.out.println("Invalid date format! Use YYYY-MM-DD.");
+                    continue;
+                }
+                if (!isValidDate(dob)) {
+                    System.out.println("Invalid date value! Enter a valid calendar date.");
+                    continue;
+                }
+
+                // Gender
+                System.out.print("Gender (M/F): ");
+                String gender = sc.nextLine().trim().toUpperCase();
+                if (!gender.equals("M") && !gender.equals("F")) {
+                    System.out.println("Invalid gender: Must be 'M' or 'F' only.");
+                    continue;
+                }
+
+                // SQL INSERT
+                String sql = """
+                    INSERT INTO Patient 
+                    (PatientID, NationalID, FirstName, MiddleName, LastName, 
+                     PatientPhoneNum, Address, DoB, Gender)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setInt(1, patientId);
+                    ps.setString(2, nationalId);
+                    ps.setString(3, firstName);
+                    ps.setString(4, middleName);
+                    ps.setString(5, lastName);
+                    ps.setString(6, phone);
+                    ps.setString(7, address);
+                    ps.setString(8, dob);
+                    ps.setString(9, gender);
+
+                    ps.executeUpdate();
+                    System.out.println("✓ Patient inserted successfully!");
+
+                }
+
+            } catch (SQLIntegrityConstraintViolationException e) {
+                String msg = e.getMessage().toLowerCase();
+
+                if (msg.contains("primary")) {
+                    System.out.println("✗ Duplicate PatientID: This ID already exists.");
+                } else if (msg.contains("nationalid")) {
+                    System.out.println("✗ Duplicate NationalID: This National ID already exists.");
+                } else {
+                    System.out.println("✗ Constraint violation: " + e.getMessage());
+                }
+
+            } catch (SQLNonTransientConnectionException e) {
+                System.out.println("✗ Database connection lost. Please restart MariaDB.");
+
+            } catch (SQLException e) {
+                if (e.getMessage().toLowerCase().contains("data too long")) {
+                    System.out.println("✗ Value exceeds column limit.");
+                } else {
+                    System.out.println("✗ SQL Error: " + e.getMessage());
+                }
+
+            } catch (Exception e) {
+                System.out.println("✗ Unexpected error: " + e.getMessage());
+            }
+
+            System.out.print("Insert another record? (Y/N): ");
+            String ans = sc.nextLine().trim().toUpperCase();
+            again = ans.isEmpty() ? 'N' : ans.charAt(0);
+        }
+    }
+}
